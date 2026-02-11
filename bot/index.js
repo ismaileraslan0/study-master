@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import TelegramBot from 'node-telegram-bot-api';
+
+
 import cron from 'node-cron';
 import express from 'express';
 import cors from 'cors';
@@ -61,9 +62,37 @@ async function writeStoreData(data) {
 }
 
 // ─────────────────────────────────────────────
-// TELEGRAM BOT
+// TELEGRAM SENDER (Native Fetch)
 // ─────────────────────────────────────────────
-const bot = new TelegramBot(BOT_TOKEN, { polling: false });
+async function sendTelegramMessage(text) {
+    if (!BOT_TOKEN || !CHAT_ID) {
+        console.error('❌ Telegram token veya Chat ID eksik!');
+        return false;
+    }
+
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: CHAT_ID,
+                text: text,
+                parse_mode: 'MarkdownV2'
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Telegram API Hatası (${response.status}): ${errorText}`);
+        }
+
+        return true;
+    } catch (error) {
+        console.error('❌ Mesaj gönderme hatası:', error.message);
+        return false;
+    }
+}
 
 // ─────────────────────────────────────────────
 // DATE HELPERS
@@ -242,9 +271,13 @@ async function sendDailyNotification() {
         const message = buildMessage(analysis);
 
         console.log('\n📬 Telegram mesajı gönderiliyor...');
-        await bot.sendMessage(CHAT_ID, message, { parse_mode: 'MarkdownV2' });
+        const sent = await sendTelegramMessage(message);
 
-        console.log('✅ Mesaj gönderildi!');
+        if (sent) {
+            console.log('✅ Mesaj başarıyla gönderildi!');
+        } else {
+            throw new Error('Mesaj gönderilemedi.');
+        }
         console.log(`   📊 Gecikmiş: ${analysis.overdueTasks.length}`);
         console.log(`   📋 Bugün: ${analysis.todayTasks.length} görev + ${analysis.todayVideos.length} video`);
 
