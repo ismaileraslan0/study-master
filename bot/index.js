@@ -611,10 +611,10 @@ cron.schedule('0 23 * * *', () => {
 });
 
 // ─────────────────────────────────────────────
-// CRON JOB — Öğle Kontrolü 14:30 (Europe/Istanbul)
+// CRON JOB — Öğle Kontrolü 15:05 (Europe/Istanbul)
 // ─────────────────────────────────────────────
-cron.schedule('30 14 * * *', () => {
-    console.log('\n☀️ 14:30 — Öğle kontrolü...');
+cron.schedule('5 15 * * *', () => {
+    console.log('\n☀️ 15:05 — Öğle kontrolü...');
     sendAfternoonCheck();
 }, {
     timezone: 'Europe/Istanbul'
