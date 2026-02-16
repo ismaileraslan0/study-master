@@ -1,11 +1,12 @@
 import 'dotenv/config';
 
-
 import cron from 'node-cron';
 import express from 'express';
 import cors from 'cors';
 import { MongoClient } from 'mongodb';
 import TelegramBot from 'node-telegram-bot-api';
+import http from 'http';
+import https from 'https';
 
 // ─────────────────────────────────────────────
 // CONFIG (from .env)
@@ -103,6 +104,34 @@ async function writeStoreData(data) {
         return true;
     } catch (err) {
         console.error('❌ MongoDB yazma hatası:', err.message);
+        return false;
+    }
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATION LOG (MongoDB)
+// ─────────────────────────────────────────────
+async function logNotification(type) {
+    try {
+        const today = getTodayStr();
+        await db.collection('notification_log').updateOne(
+            { date: today, type },
+            { $set: { date: today, type, sentAt: new Date() } },
+            { upsert: true }
+        );
+        console.log(`📝 Bildirim loglandı: ${type} (${today})`);
+    } catch (err) {
+        console.error('❌ Notification log hatası:', err.message);
+    }
+}
+
+async function wasNotificationSentToday(type) {
+    try {
+        const today = getTodayStr();
+        const doc = await db.collection('notification_log').findOne({ date: today, type });
+        return !!doc;
+    } catch (err) {
+        console.error('❌ Notification log okuma hatası:', err.message);
         return false;
     }
 }
@@ -290,9 +319,10 @@ function buildMessage(analysis) {
 // ─────────────────────────────────────────────
 // EVENING REPORT BUILDER
 // ─────────────────────────────────────────────
-function buildEveningMessage(analysis) {
+function buildEveningMessage(analysis, data) {
     const parts = [];
     const today = new Date();
+    const todayStr = getTodayStr();
     const dateStr = today.toLocaleDateString('tr-TR', {
         weekday: 'long',
         day: 'numeric',
@@ -304,41 +334,67 @@ function buildEveningMessage(analysis) {
     parts.push(`📅 ${escapeMarkdown(dateStr)}`);
     parts.push(`${'─'.repeat(25)}`);
 
+    // Bugün tamamlanan görevler
     const completedTasks = analysis.todayTasks.filter(t => t.completed);
     const incompleteTasks = analysis.todayTasks.filter(t => !t.completed);
-    const completedVideos = analysis.todayVideos.filter(v => v.watched);
-    const incompleteVideos = analysis.todayVideos.filter(v => !v.watched);
+
+    // todayVideos zaten izlenmemiş olanları içeriyor, izlenenleri ayrı hesaplamalıyız
+    // Tüm playlistlerden bugüne atanmış ve izlenmiş videoları bul
+    const playlists = data?.playlists || [];
+    let watchedTodayCount = 0;
+    playlists.forEach(pl => {
+        (pl.videos || []).forEach(v => {
+            if (v.assignedDate === todayStr && v.watched) {
+                watchedTodayCount++;
+            }
+        });
+    });
+
+    const incompleteVideos = analysis.todayVideos; // zaten !watched olanlar
 
     // Total stats
-    const totalCompleted = completedTasks.length + completedVideos.length;
+    const totalCompleted = completedTasks.length + watchedTodayCount;
     const totalIncomplete = incompleteTasks.length + incompleteVideos.length;
 
     if (totalCompleted > 0) {
         parts.push('');
         parts.push(`✅ *BUGÜN NELER YAPILDI?*`);
-        parts.push(`Toplam ${totalCompleted} görev/video tamamlandı.`);
+        parts.push(`Toplam ${totalCompleted} görev/video tamamlandı\\.`);
 
-        if (completedTasks.length > 0) parts.push(`- ${completedTasks.length} Görev`);
-        if (completedVideos.length > 0) parts.push(`- ${completedVideos.length} Video`);
+        if (completedTasks.length > 0) parts.push(`\\- ${completedTasks.length} Görev`);
+        if (watchedTodayCount > 0) parts.push(`\\- ${watchedTodayCount} Video`);
 
         parts.push('');
-        parts.push(getRandomMotivation());
+        parts.push(escapeMarkdown(getRandomMotivation()));
     } else {
         parts.push('');
         parts.push('❌ *BUGÜN HİÇBİR ŞEY YAPILMADI MI?*');
-        parts.push('_Yarın bunun telafisi şart!_');
+        parts.push('_Yarın bunun telafisi şart\\!_');
     }
 
     if (totalIncomplete > 0) {
         parts.push('');
         parts.push(`⚠️ *YARINA KALANLAR:*`);
-        parts.push(`Toplam ${totalIncomplete} eksik var.`);
-        parts.push('_Bunları yarın ilk iş olarak halletmelisin._');
+
+        incompleteTasks.forEach((task, i) => {
+            const icon = task.type === 'video' ? '📺' :
+                task.type === 'soru' ? '✏️' :
+                    task.type === 'tekrar' ? '🔄' : '📌';
+            parts.push(`  ${i + 1}\\. ${icon} ${escapeMarkdown(task.title)}`);
+        });
+
+        incompleteVideos.forEach((video, i) => {
+            parts.push(`  ${incompleteTasks.length + i + 1}\\. 📺 ${escapeMarkdown(video.title)} \\(${escapeMarkdown(video.playlistName)}\\)`);
+        });
+
+        parts.push('');
+        parts.push(`Toplam *${totalIncomplete}* eksik var\\.`);
+        parts.push('_Bunları yarın ilk iş olarak halletmelisin\\._');
     }
 
     parts.push('');
     parts.push(`${'─'.repeat(25)}`);
-    parts.push('😴 _İyi geceler, yarın daha güçlü başla!_');
+    parts.push('😴 _İyi geceler, yarın daha güçlü başla\\!_');
 
     return parts.join('\n');
 }
@@ -361,8 +417,10 @@ async function sendDailyNotification() {
         const message = buildMessage(analysis);
 
         console.log('\n📬 Günlük Rapor gönderiliyor...');
-        console.log('\n📬 Günlük Rapor gönderiliyor...');
         const result = await sendTelegramMessage(message);
+        if (result.success) {
+            await logNotification('morning');
+        }
         return result.success ? { success: true, analysis } : { success: false, error: result.error };
     } catch (err) {
         console.error('❌ Rapor hatası:', err.message);
@@ -381,11 +439,13 @@ async function sendEveningReport() {
             return { success: true, skipped: true };
         }
 
-        const message = buildEveningMessage(analysis);
+        const message = buildEveningMessage(analysis, data);
 
         console.log('\n🌙 Akşam Raporu gönderiliyor...');
-        console.log('\n🌙 Akşam Raporu gönderiliyor...');
         const result = await sendTelegramMessage(message);
+        if (result.success) {
+            await logNotification('evening');
+        }
         return result.success ? { success: true, analysis } : { success: false, error: result.error };
     } catch (err) {
         console.error('❌ Akşam raporu hatası:', err.message);
@@ -429,8 +489,10 @@ app.use(express.json({ limit: '10mb' }));
 app.get('/', (req, res) => {
     res.json({
         status: '🟢 AGS Disiplin Botu çalışıyor!',
-        cron: '08:00 Europe/Istanbul',
-        db: db ? 'bağlı' : 'bağlı değil'
+        cron: '08:00 & 23:00 Europe/Istanbul',
+        selfPing: 'aktif (10dk)',
+        db: db ? 'bağlı' : 'bağlı değil',
+        uptime: Math.floor(process.uptime()) + 's'
     });
 });
 
@@ -591,6 +653,12 @@ app.get('/test-afternoon', async (req, res) => {
     res.json(result);
 });
 
+app.get('/test-evening', async (req, res) => {
+    console.log('\n🧪 Manuel test (Akşam Raporu)...');
+    const result = await sendEveningReport();
+    res.json(result);
+});
+
 // ─────────────────────────────────────────────
 // CRON JOB — Her sabah 08:00 (Europe/Istanbul)
 // ─────────────────────────────────────────────
@@ -622,22 +690,86 @@ cron.schedule('30 14 * * *', () => {
 });
 
 // ─────────────────────────────────────────────
+// SELF-PING KEEP-ALIVE (Render uyutmasın)
+// ─────────────────────────────────────────────
+function startSelfPing() {
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    const PING_INTERVAL = 10 * 60 * 1000; // 10 dakika
+
+    setInterval(() => {
+        const url = `${RENDER_URL}/`;
+        console.log(`🏓 Self-ping: ${url}`);
+
+        // http veya https modülünü URL'ye göre seç
+        const lib = url.startsWith('https') ? https : http;
+        lib.get(url, (res) => {
+            console.log(`🏓 Ping cevabı: ${res.statusCode}`);
+        }).on('error', (err) => {
+            console.error('🏓 Ping hatası:', err.message);
+        });
+    }, PING_INTERVAL);
+
+    console.log(`🏓 Self-ping aktif: her ${PING_INTERVAL / 60000} dakikada bir`);
+}
+
+// ─────────────────────────────────────────────
+// STARTUP CHECK — Kaçırılan bildirimleri gönder
+// ─────────────────────────────────────────────
+async function checkMissedNotifications() {
+    const now = new Date();
+    const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+    const hour = trTime.getHours();
+
+    console.log(`\n🔍 Kaçırılmış bildirim kontrolü... (Saat: ${hour}:${String(trTime.getMinutes()).padStart(2, '0')})`);
+
+    // Saat 08'den sonra mıyız ve sabah raporu gönderilmemiş mi?
+    if (hour >= 8) {
+        const morningSent = await wasNotificationSentToday('morning');
+        if (!morningSent) {
+            console.log('📬 Sabah raporu kaçırılmış! Şimdi gönderiliyor...');
+            await sendDailyNotification();
+        } else {
+            console.log('✅ Sabah raporu zaten gönderilmiş.');
+        }
+    }
+
+    // Saat 23'ten sonra mıyız ve akşam raporu gönderilmemiş mi?
+    if (hour >= 23) {
+        const eveningSent = await wasNotificationSentToday('evening');
+        if (!eveningSent) {
+            console.log('🌙 Akşam raporu kaçırılmış! Şimdi gönderiliyor...');
+            await sendEveningReport();
+        } else {
+            console.log('✅ Akşam raporu zaten gönderilmiş.');
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
 // START
 // ─────────────────────────────────────────────
 async function start() {
     await connectDB();
 
-    app.listen(PORT, () => {
+    app.listen(PORT, async () => {
         console.log('');
         console.log('╔══════════════════════════════════════╗');
         console.log('║   🤖 AGS DİSİPLİN BOTU AKTİF!      ║');
         console.log('╠══════════════════════════════════════╣');
         console.log(`║  📡 Port: ${PORT}`);
         console.log(`║  🧪 Test: /test-notification`);
-        console.log(`║  ⏰ Cron: 08:00 (İstanbul)`);
+        console.log(`║  🧪 Test: /test-evening`);
+        console.log(`║  ⏰ Cron: 08:00 & 23:00 (İstanbul)`);
+        console.log(`║  🏓 Self-Ping: 10dk`);
         console.log(`║  🗄️  DB:   MongoDB Atlas`);
         console.log('╚══════════════════════════════════════╝');
         console.log('');
+
+        // Self-ping başlat
+        startSelfPing();
+
+        // Kaçırılmış bildirimleri kontrol et
+        await checkMissedNotifications();
     });
 }
 
