@@ -1,0 +1,13 @@
+name: Keep Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # Her 10 dakikada bir çalış
+  workflow_dispatch: # Manuel tetiklemeye de izin ver
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render App
+        run: curl -I https://study-master-xkrb.onrender.com/
