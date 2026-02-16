@@ -529,7 +529,15 @@ app.post('/api/sync', async (req, res) => {
             if (newlyCompleted.length > 0 || newlyWatchedCount > 0) {
                 const motivation = escapeMarkdown(getRandomMotivation());
                 const count = newlyCompleted.length + newlyWatchedCount;
-                const msg = `🎯 ${count} görev/video tamamlandı\\!\n\n${motivation}`;
+
+                // Kalan görev sayısını hesapla
+                const analysis = analyzeData(data.state);
+                const remainingTodayTasks = analysis.todayTasks.filter(t => !t.completed).length;
+                const remainingTodayVideos = analysis.todayVideos.length;
+                const remainingOverdue = analysis.overdueTasks.length;
+                const totalRemaining = remainingTodayTasks + remainingTodayVideos + remainingOverdue;
+
+                const msg = `🎯 ${count} görev/video tamamlandı\\!\n\n${motivation}\n\n📌 *Kalan:* ${totalRemaining} adet`;
 
                 console.log('👏 Motivasyon mesajı gönderiliyor...');
                 sendTelegramMessage(msg).then(res => {
