@@ -42,7 +42,7 @@ export function Dashboard() {
     playlists.forEach(playlist => {
         const dayVideos = playlist.videos.filter(v => v.assignedDate === todayStr);
         dayVideos.forEach(video => {
-            todaysVideos.push({ ...video, playlistName: playlist.name });
+            todaysVideos.push({ ...video, playlistName: playlist.name, playlistId: playlist.id });
         });
     });
 

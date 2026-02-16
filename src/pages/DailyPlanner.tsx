@@ -46,7 +46,7 @@ export function DailyPlanner() {
         playlists.forEach(playlist => {
             const dayVideos = playlist.videos.filter(v => v.assignedDate === dateStr);
             dayVideos.forEach(video => {
-                result.push({ ...video, playlistName: playlist.name });
+                result.push({ ...video, playlistName: playlist.name, playlistId: playlist.id });
             });
         });
 
