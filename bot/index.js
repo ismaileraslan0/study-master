@@ -27,11 +27,33 @@ const MOTIVATIONAL_MESSAGES = [
     "Görev tamamlandı! Şimdi sırada ne var? 😎",
     "Durmak yok! Hızını almışken devamını getir! 🚄",
     "İşte bu! Başarı detaylarda gizlidir ve sen detayları hallediyorsun! 🧐",
-    "Harika iş! Kendinle gurur duyabilirsin. Ben duyuyorum! 🤖"
+    "Ders bırakılmaz, mola verilir. Mola bitti, derse dön! ⏳",
+    "Gelecekteki sen sana teşekkür edecek. Şimdi çalışmaya devam et! 🙏",
+    "En zor kısmı başlamaktı, sen zaten başladın. Bitirmeden kalkma! 🚫",
+    "Bu konuyu halledersen akşam ne kadar rahat uyuyacağını düşün! 😴",
+    "Rakiplerin yoruldu, sen devam edersen farkı şimdi açarsın! 🏃💨",
+    "Sadece 1 saat daha odaklan, neler başarabileceğine şaşıracaksın! 🧠",
+    "Hayallerin için ter dökmen gerekiyor. Bu terler, yarın gözyaşı olmasın! 💧",
+    "Bugün ektiğin tohumlar yarın ağaç olacak. Sulamaya devam et! 🌳"
+];
+
+const AFTERNOON_MESSAGES = [
+    "Selam! Nasıl gidiyor? Bırakmadın değil mi? 👀",
+    "Öğleden sonra rehaveti çökmesin! Bir kahve al ve masaya dön ☕",
+    "Günün yarısı bitti, hedeflerin ne durumda? Hızlanma vakti! ⚡",
+    "Şu an çalışıyor olman lazım, telefona bakıyor olman değil! 😉",
+    "Mola bitti asker! Cepheye (masaya) geri dön! 🫡",
+    "Bırakmak yok! Akşama gururlu bir rapor görmek istiyorum 📉📈",
+    "Enerjin düşmesin, bitiş çizgisine daha var ama yolun yarısını geçtin! 🏁",
+    "Şşşt! Daldın gittin, odaklan tekrar! 🔔"
 ];
 
 function getRandomMotivation() {
     return MOTIVATIONAL_MESSAGES[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)];
+}
+
+function getRandomAfternoonMsg() {
+    return AFTERNOON_MESSAGES[Math.floor(Math.random() * AFTERNOON_MESSAGES.length)];
 }
 
 if (!BOT_TOKEN || !CHAT_ID || !MONGODB_URI) {
@@ -380,6 +402,29 @@ async function sendEveningReport() {
     }
 }
 
+async function sendAfternoonCheck() {
+    try {
+        const data = await readStoreData();
+        const analysis = analyzeData(data);
+
+        // Eğer bugün yapılacak bir şey yoksa rahatsız etme
+        const todoCount = analysis.todayTasks.filter(t => !t.completed).length + analysis.todayVideos.length;
+
+        if (todoCount === 0) {
+            console.log('📭 Yapılacak iş kalmamış (veya yok), öğle bildirimi atlanıyor.');
+            return { success: true, skipped: true };
+        }
+
+        const msg = getRandomAfternoonMsg() + `\n\n📌 *Kalan Görev:* ${todoCount} adet`;
+        console.log('\n☀️ Öğle kontrolü gönderiliyor...');
+        await sendTelegramMessage(msg);
+        return { success: true };
+    } catch (err) {
+        console.error('❌ Öğle bildirimi hatası:', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
 // ─────────────────────────────────────────────
 // EXPRESS SERVER
 // ─────────────────────────────────────────────
@@ -523,24 +568,17 @@ app.get('/api/status', async (req, res) => {
     });
 });
 
-// Manuel test
+// manuel test
 app.get('/test-notification', async (req, res) => {
-    console.log('\n🧪 Manuel test...');
+    console.log('\n🧪 Manuel test (Günlük Rapor)...');
     const result = await sendDailyNotification();
+    res.json(result);
+});
 
-    if (result.success) {
-        res.json({
-            success: true,
-            message: '✅ Telegram mesajı gönderildi!',
-            analysis: {
-                overdueTasks: result.analysis.overdueTasks.length,
-                todayTasks: result.analysis.todayTasks.length,
-                todayVideos: result.analysis.todayVideos.length
-            }
-        });
-    } else {
-        res.status(500).json({ success: false, error: result.error });
-    }
+app.get('/test-afternoon', async (req, res) => {
+    console.log('\n🧪 Manuel test (Öğle Kontrolü)...');
+    const result = await sendAfternoonCheck();
+    res.json(result);
 });
 
 // ─────────────────────────────────────────────
@@ -559,6 +597,16 @@ cron.schedule('0 8 * * *', () => {
 cron.schedule('0 23 * * *', () => {
     console.log('\n🌙 23:00 — Akşam raporu...');
     sendEveningReport();
+}, {
+    timezone: 'Europe/Istanbul'
+});
+
+// ─────────────────────────────────────────────
+// CRON JOB — Öğle Kontrolü 14:30 (Europe/Istanbul)
+// ─────────────────────────────────────────────
+cron.schedule('30 14 * * *', () => {
+    console.log('\n☀️ 14:30 — Öğle kontrolü...');
+    sendAfternoonCheck();
 }, {
     timezone: 'Europe/Istanbul'
 });
