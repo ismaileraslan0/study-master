@@ -5,6 +5,7 @@ import cron from 'node-cron';
 import express from 'express';
 import cors from 'cors';
 import { MongoClient } from 'mongodb';
+import TelegramBot from 'node-telegram-bot-api';
 
 // ─────────────────────────────────────────────
 // CONFIG (from .env)
@@ -13,6 +14,9 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 const MONGODB_URI = process.env.MONGODB_URI;
 const PORT = process.env.PORT || 3001;
+
+// Initialize Bot
+const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 // Motivational Messages
 const MOTIVATIONAL_MESSAGES = [
@@ -104,7 +108,7 @@ async function writeStoreData(data) {
 }
 
 // ─────────────────────────────────────────────
-// TELEGRAM SENDER (Native Fetch)
+// TELEGRAM SENDER (node-telegram-bot-api)
 // ─────────────────────────────────────────────
 async function sendTelegramMessage(text) {
     if (!BOT_TOKEN || !CHAT_ID) {
@@ -112,28 +116,12 @@ async function sendTelegramMessage(text) {
         return { success: false, error: 'BOT_TOKEN veya CHAT_ID eksik' };
     }
 
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
     try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: CHAT_ID,
-                text: text,
-                parse_mode: 'MarkdownV2'
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`❌ Telegram API Hatası (${response.status}): ${errorText}`);
-            return { success: false, error: `API Hatası (${response.status}): ${errorText}` };
-        }
-
+        await bot.sendMessage(CHAT_ID, text, { parse_mode: 'MarkdownV2' });
         return { success: true };
     } catch (error) {
         console.error('❌ Mesaj gönderme hatası:', error.message);
-        return { success: false, error: `Fetch Hatası: ${error.message}` };
+        return { success: false, error: `Telegram API Hatası: ${error.message}` };
     }
 }
 
@@ -520,23 +508,25 @@ app.post('/api/sync', async (req, res) => {
             const newWatchedVideos = [];
             (data.state?.playlists || []).forEach(pl => {
                 (pl.videos || []).forEach(v => {
-                    if (v.watched) newWatchedVideos.push(v.videoId);
+                    if (v.watched) newWatchedVideos.push(v.id);
                 });
             });
 
             const oldWatchedVideos = [];
             (oldData.playlists || []).forEach(pl => {
                 (pl.videos || []).forEach(v => {
-                    if (v.watched) oldWatchedVideos.push(v.videoId);
+                    if (v.watched) oldWatchedVideos.push(v.id);
                 });
             });
 
             const newlyWatchedCount = newWatchedVideos.filter(vId => !oldWatchedVideos.includes(vId)).length;
 
+            console.log('Newly Completed Tasks:', newlyCompleted.length);
+
             if (newlyCompleted.length > 0 || newlyWatchedCount > 0) {
-                const motivation = getRandomMotivation();
+                const motivation = escapeMarkdown(getRandomMotivation());
                 const count = newlyCompleted.length + newlyWatchedCount;
-                const msg = `🎯 ${count} görev/video tamamlandı!\n\n${motivation}`;
+                const msg = `🎯 ${count} görev/video tamamlandı\\!\n\n${motivation}`;
 
                 console.log('👏 Motivasyon mesajı gönderiliyor...');
                 sendTelegramMessage(msg).then(res => {
