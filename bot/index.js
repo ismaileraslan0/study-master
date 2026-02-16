@@ -109,7 +109,7 @@ async function writeStoreData(data) {
 async function sendTelegramMessage(text) {
     if (!BOT_TOKEN || !CHAT_ID) {
         console.error('❌ Telegram token veya Chat ID eksik!');
-        return false;
+        return { success: false, error: 'BOT_TOKEN veya CHAT_ID eksik' };
     }
 
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
@@ -126,13 +126,14 @@ async function sendTelegramMessage(text) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Telegram API Hatası (${response.status}): ${errorText}`);
+            console.error(`❌ Telegram API Hatası (${response.status}): ${errorText}`);
+            return { success: false, error: `API Hatası (${response.status}): ${errorText}` };
         }
 
-        return true;
+        return { success: true };
     } catch (error) {
         console.error('❌ Mesaj gönderme hatası:', error.message);
-        return false;
+        return { success: false, error: `Fetch Hatası: ${error.message}` };
     }
 }
 
@@ -372,8 +373,9 @@ async function sendDailyNotification() {
         const message = buildMessage(analysis);
 
         console.log('\n📬 Günlük Rapor gönderiliyor...');
-        await sendTelegramMessage(message);
-        return { success: true, analysis };
+        console.log('\n📬 Günlük Rapor gönderiliyor...');
+        const result = await sendTelegramMessage(message);
+        return result.success ? { success: true, analysis } : { success: false, error: result.error };
     } catch (err) {
         console.error('❌ Rapor hatası:', err.message);
         return { success: false, error: err.message };
@@ -394,8 +396,9 @@ async function sendEveningReport() {
         const message = buildEveningMessage(analysis);
 
         console.log('\n🌙 Akşam Raporu gönderiliyor...');
-        await sendTelegramMessage(message);
-        return { success: true, analysis };
+        console.log('\n🌙 Akşam Raporu gönderiliyor...');
+        const result = await sendTelegramMessage(message);
+        return result.success ? { success: true, analysis } : { success: false, error: result.error };
     } catch (err) {
         console.error('❌ Akşam raporu hatası:', err.message);
         return { success: false, error: err.message };
@@ -417,13 +420,9 @@ async function sendAfternoonCheck(force = false) {
 
         const msg = getRandomAfternoonMsg() + `\n\n📌 *Kalan Görev:* ${todoCount} adet`;
         console.log('\n☀️ Öğle kontrolü gönderiliyor...');
-        const sent = await sendTelegramMessage(msg);
+        const result = await sendTelegramMessage(msg);
 
-        if (sent) {
-            return { success: true };
-        } else {
-            return { success: false, error: 'Telegram mesajı gönderilemedi (Token veya Chat ID hatalı olabilir).' };
-        }
+        return result;
     } catch (err) {
         console.error('❌ Öğle bildirimi hatası:', err.message);
         return { success: false, error: err.message };
@@ -501,7 +500,9 @@ app.post('/api/sync', async (req, res) => {
                 parts.push('');
                 parts.push('Plan yapmak başarının yarısıdır. Hadi başlayalım! 🚀');
 
-                sendTelegramMessage(parts.join('\n')).catch(e => console.error(e));
+                sendTelegramMessage(parts.join('\n')).then(res => {
+                    if (!res.success) console.error('Auto-message failed:', res.error);
+                });
             }
 
             // 2. TAMAMLANAN GÖREVLER (MOTİVASYON)
@@ -537,7 +538,9 @@ app.post('/api/sync', async (req, res) => {
                 const msg = `🎯 ${count} görev/video tamamlandı!\n\n${motivation}`;
 
                 console.log('👏 Motivasyon mesajı gönderiliyor...');
-                sendTelegramMessage(msg).catch(err => console.error('Motivasyon gönderilemedi:', err));
+                sendTelegramMessage(msg).then(res => {
+                    if (!res.success) console.error('Motivation failed:', res.error);
+                });
             }
         }
         // ---------------------------
