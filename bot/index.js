@@ -402,7 +402,7 @@ async function sendEveningReport() {
     }
 }
 
-async function sendAfternoonCheck() {
+async function sendAfternoonCheck(force = false) {
     try {
         const data = await readStoreData();
         const analysis = analyzeData(data);
@@ -410,7 +410,7 @@ async function sendAfternoonCheck() {
         // Eğer bugün yapılacak bir şey yoksa rahatsız etme
         const todoCount = analysis.todayTasks.filter(t => !t.completed).length + analysis.todayVideos.length;
 
-        if (todoCount === 0) {
+        if (!force && todoCount === 0) {
             console.log('📭 Yapılacak iş kalmamış (veya yok), öğle bildirimi atlanıyor.');
             return { success: true, skipped: true };
         }
@@ -577,7 +577,7 @@ app.get('/test-notification', async (req, res) => {
 
 app.get('/test-afternoon', async (req, res) => {
     console.log('\n🧪 Manuel test (Öğle Kontrolü)...');
-    const result = await sendAfternoonCheck();
+    const result = await sendAfternoonCheck(true); // Force send
     res.json(result);
 });
 
