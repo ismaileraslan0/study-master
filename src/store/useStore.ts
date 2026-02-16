@@ -156,7 +156,7 @@ export const useStore = create<StoreState>()(
 // ─────────────────────────────────────────────
 const BOT_API_URL = import.meta.env.VITE_BOT_API_URL
     ? `${import.meta.env.VITE_BOT_API_URL}/api/sync`
-    : 'http://localhost:3001/api/sync';
+    : 'http://localhost:3002/api/sync';
 let syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
 async function syncToBot() {
@@ -169,7 +169,6 @@ async function syncToBot() {
 
             // Eğer veritabanı boşsa (ilk yükleme) gönderme
             // Ama lokalde veri varsa gönder.
-
             await fetch(BOT_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -177,7 +176,8 @@ async function syncToBot() {
                     state: { tasks, playlists, subjects, topics, questionRecords, examRecords }
                 }),
             });
-        } catch {
+        } catch (error) {
+            console.error('❌ Sync failed:', error);
             // Bot sunucusu kapalıysa sessizce devam et
         }
     }, 2000);

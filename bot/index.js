@@ -521,7 +521,10 @@ app.post('/api/sync', async (req, res) => {
 
             const newlyWatchedCount = newWatchedVideos.filter(vId => !oldWatchedVideos.includes(vId)).length;
 
-            console.log('Newly Completed Tasks:', newlyCompleted.length);
+            console.log('--- DEBUG REALTIME ---');
+            console.log('Old Watched IDs:', JSON.stringify(oldWatchedVideos));
+            console.log('New Watched IDs:', JSON.stringify(newWatchedVideos));
+            console.log('Diff:', newlyWatchedCount);
 
             if (newlyCompleted.length > 0 || newlyWatchedCount > 0) {
                 const motivation = escapeMarkdown(getRandomMotivation());
