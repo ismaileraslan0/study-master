@@ -160,6 +160,8 @@ export interface StoreState {
   topics: Record<string, string[]>; // subjectId -> topicList
   addTopic: (subjectId: string, topic: string) => void;
   deleteTopic: (subjectId: string, topic: string) => void;
+
+  setStore: (newState: Partial<StoreState>) => void;
 }
 
 // Task definition

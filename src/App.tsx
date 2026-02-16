@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { fetchServerState } from './store/useStore';
 import { Dashboard } from './pages/Dashboard';
 import { PlaylistPlanner } from './pages/PlaylistPlanner';
 import { QuestionTracker } from './pages/QuestionTracker';
@@ -11,6 +13,10 @@ import { SubjectDetail } from './pages/SubjectDetail';
 import './index.css';
 
 function App() {
+  useEffect(() => {
+    fetchServerState();
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

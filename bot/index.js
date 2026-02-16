@@ -14,6 +14,26 @@ const CHAT_ID = process.env.CHAT_ID;
 const MONGODB_URI = process.env.MONGODB_URI;
 const PORT = process.env.PORT || 3001;
 
+// Motivational Messages
+const MOTIVATIONAL_MESSAGES = [
+    "Aferin! Bir görevi daha bitirdin, hedefine bir adım daha yaklaştın! 🚀",
+    "Harikasın! Böyle devam et, başarı kaçınılmaz! 💪",
+    "Süpersin! Disiplin, özgürlüktür. Özgürlüğüne koşuyorsun! 🏃‍♂️",
+    "Tebrikler! Bir taş daha koydun duvarına. Sağlam ilerliyorsun! 🧱",
+    "Helal olsun! Rakiplerin uyurken sen çalışıyorsun (ya da en azından görevi bitirdin)! 😉",
+    "Mükemmel! Küçük adımlar büyük zaferlere götürür. Devam! 🔥",
+    "Bravo! Azmin takdire şayan. Aynen böyle devam! ⭐",
+    "Çok iyi gidiyorsun! Bu hızla AGS senin! 🏆",
+    "Görev tamamlandı! Şimdi sırada ne var? 😎",
+    "Durmak yok! Hızını almışken devamını getir! 🚄",
+    "İşte bu! Başarı detaylarda gizlidir ve sen detayları hallediyorsun! 🧐",
+    "Harika iş! Kendinle gurur duyabilirsin. Ben duyuyorum! 🤖"
+];
+
+function getRandomMotivation() {
+    return MOTIVATIONAL_MESSAGES[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)];
+}
+
 if (!BOT_TOKEN || !CHAT_ID || !MONGODB_URI) {
     console.error('❌ Eksik ortam değişkeni! .env dosyasını kontrol et:');
     console.error('   BOT_TOKEN, CHAT_ID, MONGODB_URI gerekli.');
@@ -256,6 +276,62 @@ function buildMessage(analysis) {
     return parts.join('\n');
 }
 
+// ─────────────────────────────────────────────
+// EVENING REPORT BUILDER
+// ─────────────────────────────────────────────
+function buildEveningMessage(analysis) {
+    const parts = [];
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('tr-TR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
+
+    parts.push(`🌙 *GÜN SONU RAPORU*`);
+    parts.push(`📅 ${escapeMarkdown(dateStr)}`);
+    parts.push(`${'─'.repeat(25)}`);
+
+    const completedTasks = analysis.todayTasks.filter(t => t.completed);
+    const incompleteTasks = analysis.todayTasks.filter(t => !t.completed);
+    const completedVideos = analysis.todayVideos.filter(v => v.watched);
+    const incompleteVideos = analysis.todayVideos.filter(v => !v.watched);
+
+    // Total stats
+    const totalCompleted = completedTasks.length + completedVideos.length;
+    const totalIncomplete = incompleteTasks.length + incompleteVideos.length;
+
+    if (totalCompleted > 0) {
+        parts.push('');
+        parts.push(`✅ *BUGÜN NELER YAPILDI?*`);
+        parts.push(`Toplam ${totalCompleted} görev/video tamamlandı.`);
+
+        if (completedTasks.length > 0) parts.push(`- ${completedTasks.length} Görev`);
+        if (completedVideos.length > 0) parts.push(`- ${completedVideos.length} Video`);
+
+        parts.push('');
+        parts.push(getRandomMotivation());
+    } else {
+        parts.push('');
+        parts.push('❌ *BUGÜN HİÇBİR ŞEY YAPILMADI MI?*');
+        parts.push('_Yarın bunun telafisi şart!_');
+    }
+
+    if (totalIncomplete > 0) {
+        parts.push('');
+        parts.push(`⚠️ *YARINA KALANLAR:*`);
+        parts.push(`Toplam ${totalIncomplete} eksik var.`);
+        parts.push('_Bunları yarın ilk iş olarak halletmelisin._');
+    }
+
+    parts.push('');
+    parts.push(`${'─'.repeat(25)}`);
+    parts.push('😴 _İyi geceler, yarın daha güçlü başla!_');
+
+    return parts.join('\n');
+}
+
 function escapeMarkdown(text) {
     if (!text) return '';
     return text.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
@@ -264,26 +340,42 @@ function escapeMarkdown(text) {
 // ─────────────────────────────────────────────
 // SEND NOTIFICATION
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// SEND NOTIFICATION (DAILY & EVENING)
+// ─────────────────────────────────────────────
 async function sendDailyNotification() {
     try {
         const data = await readStoreData();
         const analysis = analyzeData(data);
         const message = buildMessage(analysis);
 
-        console.log('\n📬 Telegram mesajı gönderiliyor...');
-        const sent = await sendTelegramMessage(message);
-
-        if (sent) {
-            console.log('✅ Mesaj başarıyla gönderildi!');
-        } else {
-            throw new Error('Mesaj gönderilemedi.');
-        }
-        console.log(`   📊 Gecikmiş: ${analysis.overdueTasks.length}`);
-        console.log(`   📋 Bugün: ${analysis.todayTasks.length} görev + ${analysis.todayVideos.length} video`);
-
+        console.log('\n📬 Günlük Rapor gönderiliyor...');
+        await sendTelegramMessage(message);
         return { success: true, analysis };
     } catch (err) {
-        console.error('❌ Telegram hatası:', err.message);
+        console.error('❌ Rapor hatası:', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+async function sendEveningReport() {
+    try {
+        const data = await readStoreData();
+        const analysis = analyzeData(data);
+
+        // Sadece bugün verisi varsa rapor at, yoksa boşuna rahatsız etme
+        if (analysis.todayTasks.length === 0 && analysis.todayVideos.length === 0) {
+            console.log('📭 Bugün işlem yok, akşam raporu atlanıyor.');
+            return { success: true, skipped: true };
+        }
+
+        const message = buildEveningMessage(analysis);
+
+        console.log('\n🌙 Akşam Raporu gönderiliyor...');
+        await sendTelegramMessage(message);
+        return { success: true, analysis };
+    } catch (err) {
+        console.error('❌ Akşam raporu hatası:', err.message);
         return { success: false, error: err.message };
     }
 }
@@ -304,7 +396,21 @@ app.get('/', (req, res) => {
     });
 });
 
-// Frontend'den veri sync
+// Frontend'den veri çekme (SYNC GET)
+app.get('/api/sync', async (req, res) => {
+    try {
+        const data = await readStoreData();
+        if (!data) {
+            return res.json({ state: null });
+        }
+        res.json({ state: data });
+    } catch (err) {
+        console.error('❌ Sync GET hatası:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Frontend'den veri sync (SYNC POST)
 app.post('/api/sync', async (req, res) => {
     try {
         const data = req.body;
@@ -312,10 +418,79 @@ app.post('/api/sync', async (req, res) => {
             return res.status(400).json({ error: 'Veri gönderilmedi' });
         }
 
+        const oldData = await readStoreData(); // Mevcut veriyi oku
+
         const ok = await writeStoreData(data);
         if (!ok) {
             return res.status(500).json({ error: 'MongoDB yazma hatası' });
         }
+
+        // --- DEĞİŞİKLİK VE MOTİVASYON KONTROLÜ ---
+        if (oldData) {
+            // 1. YENİ GÖREV/PLAYLIST EKLENDİ Mİ?
+            const oldTaskIds = (oldData.tasks || []).map(t => t.id);
+            const newTaskIds = (data.state?.tasks || []).map(t => t.id);
+            const addedTasks = (data.state?.tasks || []).filter(t => !oldTaskIds.includes(t.id));
+
+            const oldPlaylistIds = (oldData.playlists || []).map(p => p.id);
+            const newPlaylistIds = (data.state?.playlists || []).map(p => p.id);
+            const addedPlaylists = (data.state?.playlists || []).filter(p => !oldPlaylistIds.includes(p.id));
+
+            if (addedTasks.length > 0 || addedPlaylists.length > 0) {
+                const parts = [];
+                parts.push('🆕 *YENİ EKLEME VAR!*');
+
+                addedTasks.forEach(t => {
+                    parts.push(`📌 Görev: _${escapeMarkdown(t.title)}_`);
+                });
+
+                addedPlaylists.forEach(p => {
+                    parts.push(`📺 Playlist: _${escapeMarkdown(p.name)}_`);
+                });
+
+                parts.push('');
+                parts.push('Plan yapmak başarının yarısıdır. Hadi başlayalım! 🚀');
+
+                sendTelegramMessage(parts.join('\n')).catch(e => console.error(e));
+            }
+
+            // 2. TAMAMLANAN GÖREVLER (MOTİVASYON)
+            const newCompletedTasks = (data.state?.tasks || []).filter(t => t.completed);
+
+            // Yeni tamamlanan görevleri bul
+            // (Eski listede completed olmayan veya hiç olmayan, şimdi completed olan)
+            const newlyCompleted = newCompletedTasks.filter(nT => {
+                const ancientTask = (oldData.tasks || []).find(oT => oT.id === nT.id);
+                return !ancientTask || !ancientTask.completed;
+            });
+
+            // Playlist videoları için de kontrol
+            const newWatchedVideos = [];
+            (data.state?.playlists || []).forEach(pl => {
+                (pl.videos || []).forEach(v => {
+                    if (v.watched) newWatchedVideos.push(v.videoId);
+                });
+            });
+
+            const oldWatchedVideos = [];
+            (oldData.playlists || []).forEach(pl => {
+                (pl.videos || []).forEach(v => {
+                    if (v.watched) oldWatchedVideos.push(v.videoId);
+                });
+            });
+
+            const newlyWatchedCount = newWatchedVideos.filter(vId => !oldWatchedVideos.includes(vId)).length;
+
+            if (newlyCompleted.length > 0 || newlyWatchedCount > 0) {
+                const motivation = getRandomMotivation();
+                const count = newlyCompleted.length + newlyWatchedCount;
+                const msg = `🎯 ${count} görev/video tamamlandı!\n\n${motivation}`;
+
+                console.log('👏 Motivasyon mesajı gönderiliyor...');
+                sendTelegramMessage(msg).catch(err => console.error('Motivasyon gönderilemedi:', err));
+            }
+        }
+        // ---------------------------
 
         const taskCount = data?.state?.tasks?.length || 0;
         const playlistCount = data?.state?.playlists?.length || 0;
@@ -374,6 +549,16 @@ app.get('/test-notification', async (req, res) => {
 cron.schedule('0 8 * * *', () => {
     console.log('\n⏰ 08:00 — Günlük rapor...');
     sendDailyNotification();
+}, {
+    timezone: 'Europe/Istanbul'
+});
+
+// ─────────────────────────────────────────────
+// CRON JOB — Her akşam 23:00 (Europe/Istanbul)
+// ─────────────────────────────────────────────
+cron.schedule('0 23 * * *', () => {
+    console.log('\n🌙 23:00 — Akşam raporu...');
+    sendEveningReport();
 }, {
     timezone: 'Europe/Istanbul'
 });

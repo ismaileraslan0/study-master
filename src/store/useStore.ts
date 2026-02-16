@@ -136,6 +136,13 @@ export const useStore = create<StoreState>()(
                     },
                 })),
 
+            // Toplu State Güncelleme (Sync için)
+            setStore: (newState: Partial<StoreState>) => {
+                set((state) => ({
+                    ...state,
+                    ...newState
+                }));
+            }
 
         }),
         {
@@ -152,13 +159,17 @@ const BOT_API_URL = import.meta.env.VITE_BOT_API_URL
     : 'http://localhost:3001/api/sync';
 let syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
-function syncToBot() {
+async function syncToBot() {
     if (syncTimeout) clearTimeout(syncTimeout);
     syncTimeout = setTimeout(async () => {
         try {
             const state = useStore.getState();
             // Fonksiyonları çıkar, sadece veriyi gönder
             const { tasks, playlists, subjects, topics, questionRecords, examRecords } = state;
+
+            // Eğer veritabanı boşsa (ilk yükleme) gönderme
+            // Ama lokalde veri varsa gönder.
+
             await fetch(BOT_API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -170,6 +181,23 @@ function syncToBot() {
             // Bot sunucusu kapalıysa sessizce devam et
         }
     }, 2000);
+}
+
+// Sunucudan veri çek
+export async function fetchServerState() {
+    try {
+        // GET isteği için URL'yi düzelt (bazı durumlarda POST url'i aynı olmayabilir ama burada aynı base)
+        const res = await fetch(BOT_API_URL);
+        if (!res.ok) throw new Error('Sunucu hatası');
+
+        const data = await res.json();
+        if (data && data.state) {
+            console.log('📦 Sunucudan veri çekildi:', data.state);
+            useStore.getState().setStore(data.state);
+        }
+    } catch (err) {
+        console.error('❌ Sunucudan veri çekilemedi:', err);
+    }
 }
 
 // Store değişikliklerini dinle
