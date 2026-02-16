@@ -418,7 +418,8 @@ async function sendAfternoonCheck(force = false) {
             return { success: true, skipped: true };
         }
 
-        const msg = getRandomAfternoonMsg() + `\n\n📌 *Kalan Görev:* ${todoCount} adet`;
+        const motivation = escapeMarkdown(getRandomAfternoonMsg());
+        const msg = `${motivation}\n\n📌 *Kalan Görev:* ${todoCount} adet`;
         console.log('\n☀️ Öğle kontrolü gönderiliyor...');
         const result = await sendTelegramMessage(msg);
 
