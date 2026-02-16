@@ -417,8 +417,13 @@ async function sendAfternoonCheck(force = false) {
 
         const msg = getRandomAfternoonMsg() + `\n\n📌 *Kalan Görev:* ${todoCount} adet`;
         console.log('\n☀️ Öğle kontrolü gönderiliyor...');
-        await sendTelegramMessage(msg);
-        return { success: true };
+        const sent = await sendTelegramMessage(msg);
+
+        if (sent) {
+            return { success: true };
+        } else {
+            return { success: false, error: 'Telegram mesajı gönderilemedi (Token veya Chat ID hatalı olabilir).' };
+        }
     } catch (err) {
         console.error('❌ Öğle bildirimi hatası:', err.message);
         return { success: false, error: err.message };
